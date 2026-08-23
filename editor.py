@@ -112,6 +112,33 @@ def guess_title(url):
 
 BLOCKED_SIGNS = ("just a moment", "verify you are human", "checking your browser", "enable javascript")
 
+# Site data APIs — some novel sites are JS apps whose pages are empty shells,
+# but their chapter API returns clean JSON. Trying the API first is faster,
+# lighter, and skips Chromium entirely.
+_CHIKARI_RE = re.compile(r"^(https?://chikari\.moe)/novels/([^/]+)/(\d+)$")
+
+
+def _api_fetch(url, log):
+    """Returns chapter text via a known site API, or None if no API matches."""
+    m = _CHIKARI_RE.match(url.rstrip("/"))
+    if not m:
+        return None
+    base, slug, num = m.groups()
+    api_url = f"{base}/api/novels/{slug}/chapters/{num}/read"
+    log(f"   [api] fetching {api_url}")
+    r = requests.get(api_url, timeout=30, headers={
+        **FETCH_HEADERS, "Accept": "application/json", "Referer": url})
+    r.raise_for_status()
+    data = r.json()
+    body = (data.get("body") or "").strip()
+    title = data.get("title") or ""
+    if data.get("locked"):
+        raise RuntimeError(f"Chapter {num} is locked on the site"
+                           + (f" ({data.get('lock_reason')})" if data.get("lock_reason") else "") + ".")
+    if len(body) < 100:
+        return None  # empty/odd response — fall through to the other methods
+    return (title + "\n\n" + body) if title else body
+
 
 def _extract_story(html):
     """Paragraphs first (your original logic); fall back to common story
@@ -156,8 +183,15 @@ def fetch_chapter_text_browser(url, log):
 
 
 def fetch_chapter_text(url, log=print):
-    """Plain HTTP first (fast); headless browser only when that comes back
-    empty or blocked."""
+    """Site API first (cleanest), then plain HTTP, then headless browser."""
+    try:
+        text = _api_fetch(url, log)
+        if text is not None:
+            return text
+    except RuntimeError:
+        raise  # locked chapter — a real answer, don't mask it with fallbacks
+    except Exception as e:
+        log(f"   [api] failed ({e}) - trying plain HTTP.")
     try:
         r = requests.get(url, headers=FETCH_HEADERS, timeout=30)
         r.raise_for_status()
