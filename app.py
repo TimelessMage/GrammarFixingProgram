@@ -3,18 +3,21 @@
 Routes: signup/login, start job, list jobs, download finished file.
 State lives in a Google Sheet (users + jobs) and Google Drive (txt files).
 """
+import json
 import os
-import threading
+from datetime import datetime, timezone
 
+import requests as http
 from fastapi import FastAPI, HTTPException, Header, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from pydantic import BaseModel
 
+import keycrypto
 import storage
 import user_encrypt
-from editor import run_job, extract_chapter_number
+from editor import extract_chapter_number
 
 app = FastAPI()
 app.add_middleware(
@@ -91,6 +94,31 @@ def me(authorization: str | None = Header(None)):
     return {"email": require_user(authorization)}
 
 
+def _dispatch_worker(job_id: str, keys: list):
+    """Press GitHub Actions' start button for this job."""
+    repo = os.environ["GH_REPO"]          # e.g. "yourname/grammar-fixer"
+    r = http.post(
+        f"https://api.github.com/repos/{repo}/actions/workflows/polish.yml/dispatches",
+        headers={"Authorization": "Bearer " + os.environ["GH_TOKEN"],
+                 "Accept": "application/vnd.github+json"},
+        json={"ref": "main", "inputs": {"job_id": str(job_id),
+                                        "keys_encrypted": keycrypto.encrypt(json.dumps(keys))}},
+        timeout=20,
+    )
+    if r.status_code != 204:
+        raise HTTPException(500, f"Couldn't start the worker (GitHub said {r.status_code}). "
+                                 "Check the GH_TOKEN and GH_REPO settings.")
+
+
+def _is_stale(job) -> bool:
+    """True if a 'running' job hasn't saved progress in 30+ min (worker died)."""
+    try:
+        t = datetime.strptime(job["updated_at"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - t).total_seconds() > 1800
+    except Exception:
+        return True
+
+
 @app.post("/api/jobs")
 def start_job(req: JobReq, authorization: str | None = Header(None)):
     email = require_user(authorization)
@@ -102,14 +130,14 @@ def start_job(req: JobReq, authorization: str | None = Header(None)):
         raise HTTPException(400, "At least API key 1 is required.")
 
     job = storage.find_or_create_job(email, req.start_url, req.total_chapters, req.filename)
-    if job["status"] == "running":
+    if job["status"] == "running" and not _is_stale(job):
         raise HTTPException(400, "That novel is already being polished — check Jobs below.")
     if job["status"] == "done":
         return {"message": "This novel is already complete! Find it in your library below."}
 
-    storage.set_job_status(job["job_id"], "running")
     keys = [k for k in (req.key1, req.key2) if k]
-    threading.Thread(target=run_job, args=(job["job_id"], keys), daemon=True).start()
+    _dispatch_worker(job["job_id"], keys)
+    storage.set_job_status(job["job_id"], "running")
 
     resumed = int(job["last_completed"]) > 0
     return {"message": ("Resuming from chapter %s. " % (int(job["last_completed"]) + 1) if resumed else "Started! ")
