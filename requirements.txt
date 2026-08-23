@@ -1,0 +1,11 @@
+fastapi==0.115.*
+uvicorn[standard]==0.30.*
+requests
+beautifulsoup4
+openai>=1.40
+gspread
+google-api-python-client
+google-auth
+itsdangerous
+pydantic>=2
+playwright

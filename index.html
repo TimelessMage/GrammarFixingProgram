@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Redline — web novel polisher</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,300;7..72,500;7..72,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#141824; --panel:#1B2130; --panel2:#20283A; --line:#2A3145;
+  --paper:#EDE8DC; --dim:#8B92A5; --lamp:#E5A83B; --red:#C4554D; --ok:#5FA36A;
+  --radius:10px;
+}
+*{box-sizing:border-box; margin:0}
+html,body{background:var(--ink); color:var(--paper); font-family:Inter,system-ui,sans-serif; font-size:15px; line-height:1.55}
+h1,h2,h3,.serif{font-family:Literata,Georgia,serif}
+main{max-width:720px; margin:0 auto; padding:32px 20px 80px}
+
+/* Masthead */
+header.mast{padding:40px 0 28px; border-bottom:1px solid var(--line); margin-bottom:32px}
+header.mast .kicker{font-size:12px; letter-spacing:.18em; text-transform:uppercase; color:var(--lamp); margin-bottom:10px}
+header.mast h1{font-size:clamp(30px,6vw,42px); font-weight:700; letter-spacing:-.01em}
+header.mast h1 em{font-style:normal; text-decoration:underline; text-decoration-color:var(--red); text-decoration-thickness:3px; text-underline-offset:6px}
+header.mast p{color:var(--dim); margin-top:10px; max-width:52ch}
+
+/* Panels & forms */
+.panel{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:24px; margin-bottom:24px}
+.panel h2{font-size:20px; font-weight:500; margin-bottom:4px}
+.panel .sub{color:var(--dim); font-size:13.5px; margin-bottom:18px}
+.field{margin-bottom:16px; position:relative}
+label{display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; letter-spacing:.02em; color:var(--paper); margin-bottom:6px}
+input[type=text],input[type=email],input[type=password],input[type=number],input[type=url]{
+  width:100%; padding:11px 13px; background:var(--ink); color:var(--paper);
+  border:1px solid var(--line); border-radius:8px; font:inherit; font-size:14.5px}
+input:focus{outline:2px solid var(--lamp); outline-offset:1px; border-color:transparent}
+button{font:inherit; cursor:pointer}
+.btn{display:inline-flex; align-items:center; gap:8px; padding:11px 20px; border-radius:8px; border:1px solid transparent;
+  background:var(--lamp); color:#1a1408; font-weight:600; font-size:14.5px}
+.btn:hover{filter:brightness(1.08)}
+.btn:disabled{opacity:.5; cursor:wait}
+.btn.ghost{background:transparent; border-color:var(--line); color:var(--paper)}
+.btn.ghost:hover{border-color:var(--dim)}
+.row2{display:grid; grid-template-columns:1fr 1fr; gap:14px}
+@media(max-width:560px){.row2{grid-template-columns:1fr}}
+
+/* Marginalia help notes (the ? buttons) */
+.help{width:20px; height:20px; border-radius:50%; border:1px solid var(--dim); background:transparent;
+  color:var(--dim); font-size:12px; font-weight:600; line-height:1; flex:none}
+.help:hover,.help:focus-visible{border-color:var(--lamp); color:var(--lamp)}
+.note{display:none; position:absolute; z-index:20; top:calc(100% + 6px); left:0; right:0;
+  background:var(--panel2); border-left:3px solid var(--red); border-radius:0 8px 8px 0;
+  padding:12px 14px; font-size:13px; color:var(--paper); box-shadow:0 8px 24px rgba(0,0,0,.45)}
+.note.open{display:block; animation:fade .15s ease}
+.note .serif{color:var(--lamp); display:block; margin-bottom:3px; font-size:13px}
+@keyframes fade{from{opacity:0; transform:translateY(-3px)}to{opacity:1}}
+@media(prefers-reduced-motion:reduce){.note.open{animation:none}}
+
+/* Status & lists */
+.msg{border-radius:8px; padding:11px 14px; font-size:13.5px; margin-top:14px; display:none}
+.msg.err{display:block; background:rgba(196,85,77,.12); border:1px solid var(--red); color:#E8B5B0}
+.msg.ok{display:block; background:rgba(95,163,106,.12); border:1px solid var(--ok); color:#BFE0C5}
+.joblist,.filelist{list-style:none}
+.joblist li,.filelist li{display:flex; align-items:center; gap:12px; padding:13px 4px; border-bottom:1px solid var(--line)}
+.joblist li:last-child,.filelist li:last-child{border-bottom:0}
+.title{font-family:Literata,serif; font-weight:500; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.meta{color:var(--dim); font-size:12.5px; flex:none}
+.dot{width:8px; height:8px; border-radius:50%; flex:none}
+.dot.running{background:var(--lamp); animation:pulse 1.6s infinite}
+.dot.done{background:var(--ok)}
+.dot.failed,.dot.interrupted{background:var(--red)}
+@keyframes pulse{50%{opacity:.35}}
+@media(prefers-reduced-motion:reduce){.dot.running{animation:none}}
+.dl{flex:none; width:34px; height:34px; display:grid; place-items:center; border:1px solid var(--line); border-radius:8px; background:transparent; color:var(--paper); text-decoration:none}
+.dl:hover{border-color:var(--lamp); color:var(--lamp)}
+.empty{color:var(--dim); font-size:13.5px; padding:6px 4px}
+.topbar{display:flex; justify-content:space-between; align-items:center; margin-bottom:6px}
+.topbar .who{color:var(--dim); font-size:13px}
+.linkish{background:none; border:none; color:var(--lamp); text-decoration:underline; font-size:13.5px; padding:0}
+.hide{display:none}
+</style>
+</head>
+<body>
+<main>
+  <header class="mast">
+    <div class="kicker">Grammar fixer</div>
+    <h1>Every chapter, <em>redlined</em>.</h1>
+    <p>Paste a web novel link, add your Gemini keys, and get the whole story back as clean, readable prose — emailed to you when it's done.</p>
+  </header>
+
+  <!-- ===== AUTH VIEW ===== -->
+  <section id="authView">
+    <div class="panel">
+      <h2 id="authTitle">Create your account</h2>
+      <p class="sub" id="authSub">Your email is where the "it's finished" message goes.</p>
+      <div class="field">
+        <label for="email">Email
+          <button type="button" class="help" data-note="n-email" aria-label="What is this for?">?</button></label>
+        <input type="email" id="email" autocomplete="email" placeholder="you@example.com">
+        <div class="note" id="n-email"><span class="serif">Margin note</span>Used to sign in and to email you when a novel finishes polishing. Nothing else.</div>
+      </div>
+      <div class="field">
+        <label for="password">Password
+          <button type="button" class="help" data-note="n-pass" aria-label="What is this for?">?</button></label>
+        <input type="password" id="password" autocomplete="current-password" placeholder="••••••••">
+        <div class="note" id="n-pass"><span class="serif">Margin note</span>Stored only in protected form — the site never keeps your password as plain text.</div>
+      </div>
+      <button class="btn" id="authBtn">Create account</button>
+      <div class="msg" id="authMsg"></div>
+      <p style="margin-top:16px; font-size:13.5px; color:var(--dim)">
+        <span id="authSwitchText">Already have an account?</span>
+        <button class="linkish" id="authSwitch">Sign in instead</button>
+      </p>
+    </div>
+  </section>
+
+  <!-- ===== APP VIEW ===== -->
+  <section id="appView" class="hide">
+    <div class="topbar">
+      <span class="who" id="whoami"></span>
+      <button class="linkish" id="logout">Sign out</button>
+    </div>
+
+    <div class="panel">
+      <h2>Polish a novel</h2>
+      <p class="sub">Runs in the background — close the tab whenever. You'll get an email at the finish line.</p>
+
+      <div class="field">
+        <label for="url">Chapter link
+          <button type="button" class="help" data-note="n-url" aria-label="Help for chapter link">?</button></label>
+        <input type="url" id="url" placeholder="https://example.org/novel/some-novel/chapter/1/">
+        <div class="note" id="n-url"><span class="serif">Margin note</span>Link to the chapter you want to <b>start from</b>. The address must end with the chapter number — that's how the next chapters are found. If you've run this novel before, it resumes automatically after the last saved chapter.</div>
+      </div>
+
+      <div class="row2">
+        <div class="field">
+          <label for="total">Last chapter №
+            <button type="button" class="help" data-note="n-total" aria-label="Help for last chapter">?</button></label>
+          <input type="number" id="total" min="1" placeholder="250">
+          <div class="note" id="n-total"><span class="serif">Margin note</span>The number of the final chapter to polish — usually the novel's total chapter count. Polishing stops after this one.</div>
+        </div>
+        <div class="field">
+          <label for="fname">File name <span style="color:var(--dim);font-weight:400">(optional)</span>
+            <button type="button" class="help" data-note="n-fname" aria-label="Help for file name">?</button></label>
+          <input type="text" id="fname" placeholder="Auto from novel title">
+          <div class="note" id="n-fname"><span class="serif">Margin note</span>Leave blank and the file is named after the novel's title. Fill it in only if the auto-detected title looks wrong.</div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="key1">Gemini API key 1
+          <button type="button" class="help" data-note="n-k1" aria-label="Help for API key 1">?</button></label>
+        <input type="password" id="key1" autocomplete="off" placeholder="AIza…">
+        <div class="note" id="n-k1"><span class="serif">Margin note</span>Free from <b>aistudio.google.com</b> → "Get API key". This key does the editing. It's used only while your job runs and is never saved.</div>
+      </div>
+      <div class="field">
+        <label for="key2">Gemini API key 2
+          <button type="button" class="help" data-note="n-k2" aria-label="Help for API key 2">?</button></label>
+        <input type="password" id="key2" autocomplete="off" placeholder="AIza…">
+        <div class="note" id="n-k2"><span class="serif">Margin note</span>A second key from a different Google account. When key 1 hits its free-tier rate limit, polishing switches here instead of stopping.</div>
+      </div>
+
+      <button class="btn" id="runBtn">Start polishing</button>
+      <div class="msg" id="runMsg"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Jobs</h2>
+      <p class="sub">Progress saves after every chapter, so interruptions just resume.</p>
+      <ul class="joblist" id="jobs"><li class="empty">Nothing running yet.</li></ul>
+    </div>
+
+    <div class="panel">
+      <h2>Your library</h2>
+      <p class="sub">Finished (and in-progress) files, tied to this account.</p>
+      <ul class="filelist" id="files"><li class="empty">No files yet — start a job above.</li></ul>
+    </div>
+  </section>
+</main>
+
+<script>
+/* ======= CONFIG: set this to your Hugging Face Space URL, no trailing slash ======= */
+const BACKEND = "https://YOUR-SPACE-NAME.hf.space";
+/* ================================================================================= */
+
+const $ = id => document.getElementById(id);
+let token = localStorage.getItem("rl_token") || "";
+let mode = "signup";
+
+/* Marginalia notes */
+document.addEventListener("click", e => {
+  const b = e.target.closest(".help");
+  document.querySelectorAll(".note.open").forEach(n => { if (!b || n.id !== b.dataset.note) n.classList.remove("open"); });
+  if (b) $(b.dataset.note).classList.toggle("open");
+});
+
+async function api(path, body, method) {
+  const r = await fetch(BACKEND + path, {
+    method: method || (body ? "POST" : "GET"),
+    headers: { "Content-Type": "application/json", ...(token ? { "Authorization": "Bearer " + token } : {}) },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.detail || "Something went wrong — try again.");
+  return data;
+}
+function say(el, text, ok) { el.textContent = text; el.className = "msg " + (ok ? "ok" : "err"); }
+
+/* Auth */
+$("authSwitch").onclick = () => {
+  mode = mode === "signup" ? "login" : "signup";
+  $("authTitle").textContent = mode === "signup" ? "Create your account" : "Welcome back";
+  $("authSub").textContent = mode === "signup" ? "Your email is where the \"it's finished\" message goes." : "Sign in to see your library.";
+  $("authBtn").textContent = mode === "signup" ? "Create account" : "Sign in";
+  $("authSwitchText").textContent = mode === "signup" ? "Already have an account?" : "New here?";
+  $("authSwitch").textContent = mode === "signup" ? "Sign in instead" : "Create an account";
+};
+$("authBtn").onclick = async () => {
+  $("authBtn").disabled = true;
+  try {
+    const d = await api("/api/" + mode, { email: $("email").value.trim(), password: $("password").value });
+    token = d.token; localStorage.setItem("rl_token", token);
+    showApp(d.email);
+  } catch (e) { say($("authMsg"), e.message, false); }
+  $("authBtn").disabled = false;
+};
+$("logout").onclick = () => { token = ""; localStorage.removeItem("rl_token"); location.reload(); };
+
+/* Jobs */
+$("runBtn").onclick = async () => {
+  $("runBtn").disabled = true;
+  try {
+    const d = await api("/api/jobs", {
+      start_url: $("url").value.trim(),
+      total_chapters: parseInt($("total").value, 10),
+      filename: $("fname").value.trim(),
+      key1: $("key1").value.trim(),
+      key2: $("key2").value.trim()
+    });
+    say($("runMsg"), d.message, true);
+    refresh();
+  } catch (e) { say($("runMsg"), e.message, false); }
+  $("runBtn").disabled = false;
+};
+
+const STATUS_LABEL = { running: "polishing", done: "finished", failed: "failed", interrupted: "paused — press Start again to resume" };
+async function refresh() {
+  try {
+    const d = await api("/api/jobs");
+    $("jobs").innerHTML = d.jobs.length ? d.jobs.map(j =>
+      `<li><span class="dot ${j.status}"></span><span class="title">${esc(j.title)}</span>
+       <span class="meta">ch. ${j.last_completed}/${j.total_chapters} · ${STATUS_LABEL[j.status] || j.status}</span></li>`
+    ).join("") : '<li class="empty">Nothing running yet.</li>';
+    const files = d.jobs.filter(j => j.file_id);
+    $("files").innerHTML = files.length ? files.map(j =>
+      `<li><span class="title">${esc(j.title)}.txt</span><span class="meta">${j.last_completed} ch.</span>
+       <a class="dl" title="Download" href="${BACKEND}/api/download/${j.job_id}?token=${encodeURIComponent(token)}">⭳</a></li>`
+    ).join("") : '<li class="empty">No files yet — start a job above.</li>';
+  } catch (e) { /* token expired */ if (String(e.message).includes("session")) $("logout").onclick(); }
+}
+function esc(s){ return String(s || "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+function showApp(email) {
+  $("authView").classList.add("hide"); $("appView").classList.remove("hide");
+  $("whoami").textContent = email;
+  refresh(); setInterval(refresh, 30000);
+}
+/* Restore session */
+if (token) api("/api/me").then(d => showApp(d.email)).catch(() => { token = ""; localStorage.removeItem("rl_token"); });
+</script>
+</body>
+</html>
