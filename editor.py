@@ -238,7 +238,13 @@ def ai_editor(text_block, providers, log):
             try:
                 log(f"   [Trying {provider['name']} - {model_name}]")
                 response = provider["client"].chat.completions.create(model=model_name, messages=messages)
-                return response.choices[0].message.content
+                content = (response.choices[0].message.content or "").strip()
+                if content:
+                    return content
+                reason = getattr(response.choices[0], "finish_reason", None) or "no reason given"
+                log(f"   [!] {provider['name']} ({model_name}) replied with EMPTY text "
+                    f"(finish_reason={reason}) - trying next model.")
+                continue
             except Exception as e:
                 err = str(e).lower()
                 if "429" in err or "rate_limit" in err:
