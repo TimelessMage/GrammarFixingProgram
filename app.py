@@ -59,8 +59,8 @@ class JobReq(BaseModel):
     start_url: str
     total_chapters: int
     filename: str = ""
-    key1: str
-    key2: str
+    key1: str = ""
+    key2: str = ""
 
 
 # ---------- routes ----------
@@ -111,7 +111,9 @@ def login(c: Creds):
 
 @app.get("/api/me")
 def me(authorization: str | None = Header(None)):
-    return {"email": require_user(authorization)}
+    email = require_user(authorization)
+    row = storage.get_user(email)
+    return {"email": email, "has_keys": bool(row and row.get("keys_encrypted"))}
 
 
 def _dispatch_worker(job_id: str, keys: list):
@@ -146,8 +148,17 @@ def start_job(req: JobReq, authorization: str | None = Header(None)):
         raise HTTPException(400, "The link must end with a chapter number, like .../chapter/1/")
     if not (1 <= req.total_chapters <= 5000):
         raise HTTPException(400, "Last chapter number must be between 1 and 5000.")
-    if not req.key1:
-        raise HTTPException(400, "At least API key 1 is required.")
+
+    keys = [k.strip() for k in (req.key1, req.key2) if k.strip()]
+    if keys:  # remember for next time, encrypted
+        storage.set_user_keys(email, keycrypto.encrypt(json.dumps(keys)))
+    else:     # nothing entered - use the account's saved keys
+        row = storage.get_user(email)
+        enc = (row or {}).get("keys_encrypted") or ""
+        if enc:
+            keys = json.loads(keycrypto.decrypt(enc))
+    if not keys:
+        raise HTTPException(400, "Paste your Gemini API key(s) — your account will remember them.")
 
     job = storage.find_or_create_job(email, req.start_url, req.total_chapters, req.filename)
     if job["status"] == "running" and not _is_stale(job):
@@ -155,7 +166,6 @@ def start_job(req: JobReq, authorization: str | None = Header(None)):
     if job["status"] == "done":
         return {"message": "This novel is already complete! Find it in your library below."}
 
-    keys = [k for k in (req.key1, req.key2) if k]
     if os.environ.get("GH_TOKEN") and os.environ.get("GH_REPO"):
         _dispatch_worker(job["job_id"], keys)          # run on GitHub Actions
     else:
@@ -165,7 +175,7 @@ def start_job(req: JobReq, authorization: str | None = Header(None)):
 
     resumed = int(job["last_completed"]) > 0
     return {"message": ("Resuming from chapter %s. " % (int(job["last_completed"]) + 1) if resumed else "Started! ")
-            + "You'll get an email when it finishes — feel free to close this tab."}
+            + "Progress saves automatically — close the tab and check back anytime."}
 
 
 @app.get("/api/jobs")
