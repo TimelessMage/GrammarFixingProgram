@@ -1,0 +1,33 @@
+name: polish
+
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        required: true
+        type: string
+      keys_encrypted:
+        required: true
+        type: string
+
+jobs:
+  polish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350   # GitHub's hard cap is 6h; resume covers longer novels
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - run: playwright install --with-deps chromium
+      - run: python worker.py
+        env:
+          JOB_ID: ${{ inputs.job_id }}
+          KEYS_ENCRYPTED: ${{ inputs.keys_encrypted }}
+          GOOGLE_CREDS_JSON: ${{ secrets.GOOGLE_CREDS_JSON }}
+          SHEET_ID: ${{ secrets.SHEET_ID }}
+          DRIVE_FOLDER_ID: ${{ secrets.DRIVE_FOLDER_ID }}
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
