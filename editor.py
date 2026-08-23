@@ -254,13 +254,10 @@ def ai_editor(text_block, providers, log):
 def run_job(job_id, keys):
     log = lambda msg: print(f"[{job_id}] {msg}", flush=True)
     job = storage.get_job(job_id)
-    title = job["title"]
     providers = build_providers(keys)
 
     start_chapter = max(int(job["last_completed"]) + 1, extract_chapter_number(job["start_url"]) or 1)
     total = int(job["total_chapters"])
-    file_id = job.get("file_id") or ""
-    body = storage.download_file(file_id).decode("utf-8") if file_id else ""
 
     stay_awake = threading.Event()
     threading.Thread(target=_keep_awake, args=(stay_awake, log), daemon=True).start()
@@ -275,9 +272,8 @@ def run_job(job_id, keys):
 
             if polished:
                 exhausted_waits = 0
-                body += f"\n\nCHAPTER {chapter}\n\n{polished}\n\n" + "-" * 40 + "\n\n"
-                file_id = storage.upsert_file(file_id, title, body)
-                storage.record_progress(job_id, chapter, file_id)
+                storage.save_chapter(job_id, chapter, polished)
+                storage.record_progress(job_id, chapter)
                 log(f"✓ Chapter {chapter} saved.")
                 chapter += 1
                 time.sleep(4)
