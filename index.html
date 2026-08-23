@@ -92,12 +92,12 @@ button{font:inherit; cursor:pointer}
   <section id="authView">
     <div class="panel">
       <h2 id="authTitle">Create your account</h2>
-      <p class="sub" id="authSub">Your email is where the "it's finished" message goes.</p>
+      <p class="sub" id="authSub">Your email is just your sign-in name.</p>
       <div class="field">
         <label for="email">Email
           <button type="button" class="help" data-note="n-email" aria-label="What is this for?">?</button></label>
         <input type="email" id="email" autocomplete="email" placeholder="you@example.com">
-        <div class="note" id="n-email"><span class="serif">Margin note</span>Used to sign in and to email you when a novel finishes polishing. Nothing else.</div>
+        <div class="note" id="n-email"><span class="serif">Margin note</span>Used only as your sign-in name. No emails are ever sent.</div>
       </div>
       <div class="field">
         <label for="password">Password
@@ -123,7 +123,7 @@ button{font:inherit; cursor:pointer}
 
     <div class="panel">
       <h2>Polish a novel</h2>
-      <p class="sub">Runs in the background — close the tab whenever. You'll get an email at the finish line.</p>
+      <p class="sub">Runs in the background — close the tab and check back whenever.</p>
 
       <div class="field">
         <label for="url">Chapter link
@@ -151,13 +151,13 @@ button{font:inherit; cursor:pointer}
         <label for="key1">Gemini API key 1
           <button type="button" class="help" data-note="n-k1" aria-label="Help for API key 1">?</button></label>
         <input type="password" id="key1" autocomplete="off" placeholder="AIza…">
-        <div class="note" id="n-k1"><span class="serif">Margin note</span>Free from <b>aistudio.google.com</b> → "Get API key". This key does the editing. It's used only while your job runs and is never saved.</div>
+        <div class="note" id="n-k1"><span class="serif">Margin note</span>Free from <b>aistudio.google.com</b> → "Get API key". This key does the editing. After your first run it's saved to your account (encrypted), so you won't retype it.</div>
       </div>
       <div class="field">
         <label for="key2">Gemini API key 2
           <button type="button" class="help" data-note="n-k2" aria-label="Help for API key 2">?</button></label>
         <input type="password" id="key2" autocomplete="off" placeholder="AIza…">
-        <div class="note" id="n-k2"><span class="serif">Margin note</span>A second key from a different Google account. When key 1 hits its free-tier rate limit, polishing switches here instead of stopping.</div>
+        <div class="note" id="n-k2"><span class="serif">Margin note</span>A second key from a different Google account. When key 1 hits its free-tier rate limit, polishing switches here instead of stopping. Also remembered by your account.</div>
       </div>
 
       <button class="btn" id="runBtn">Start polishing</button>
@@ -180,7 +180,7 @@ button{font:inherit; cursor:pointer}
 
 <script>
 /* ======= CONFIG: set this to your Hugging Face Space URL, no trailing slash ======= */
-const BACKEND = "https://redline-py81.onrender.com";
+const BACKEND = "https://YOUR-SPACE-NAME.hf.space";
 /* ================================================================================= */
 
 const $ = id => document.getElementById(id);
@@ -210,7 +210,7 @@ function say(el, text, ok) { el.textContent = text; el.className = "msg " + (ok 
 $("authSwitch").onclick = () => {
   mode = mode === "signup" ? "login" : "signup";
   $("authTitle").textContent = mode === "signup" ? "Create your account" : "Welcome back";
-  $("authSub").textContent = mode === "signup" ? "Your email is where the \"it's finished\" message goes." : "Sign in to see your library.";
+  $("authSub").textContent = mode === "signup" ? "Your email is just your sign-in name." : "Sign in to see your library.";
   $("authBtn").textContent = mode === "signup" ? "Create account" : "Sign in";
   $("authSwitchText").textContent = mode === "signup" ? "Already have an account?" : "New here?";
   $("authSwitch").textContent = mode === "signup" ? "Sign in instead" : "Create an account";
@@ -238,6 +238,7 @@ $("runBtn").onclick = async () => {
       key2: $("key2").value.trim()
     });
     say($("runMsg"), d.message, true);
+    if ($("key1").value.trim()) { $("key1").value = ""; $("key2").value = ""; keyHints(true); }
     refresh();
   } catch (e) { say($("runMsg"), e.message, false); }
   $("runBtn").disabled = false;
@@ -260,9 +261,13 @@ async function refresh() {
 }
 function esc(s){ return String(s || "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 
+function keyHints(has) {
+  if (has) $("key1").placeholder = $("key2").placeholder = "Saved to your account — paste to replace";
+}
 function showApp(email) {
   $("authView").classList.add("hide"); $("appView").classList.remove("hide");
   $("whoami").textContent = email;
+  api("/api/me").then(d => keyHints(d.has_keys)).catch(() => {});
   refresh(); setInterval(refresh, 30000);
 }
 /* Restore session */
