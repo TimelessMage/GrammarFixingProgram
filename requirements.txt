@@ -4,7 +4,6 @@ requests
 beautifulsoup4
 openai>=1.40
 gspread
-google-api-python-client
 google-auth
 itsdangerous
 pydantic>=2
