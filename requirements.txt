@@ -9,3 +9,4 @@ google-auth
 itsdangerous
 pydantic>=2
 playwright
+cryptography
