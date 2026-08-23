@@ -5,6 +5,7 @@ State lives in a Google Sheet (users + jobs) and Google Drive (txt files).
 """
 import json
 import os
+import threading
 from datetime import datetime, timezone
 
 import requests as http
@@ -17,7 +18,7 @@ from pydantic import BaseModel
 import keycrypto
 import storage
 import user_encrypt
-from editor import extract_chapter_number
+from editor import run_job, extract_chapter_number
 
 app = FastAPI()
 app.add_middleware(
@@ -67,6 +68,25 @@ class JobReq(BaseModel):
 @app.get("/")
 def root():
     return {"ok": True, "app": "redline"}
+
+
+@app.get("/api/diag/chikari")
+def diag_chikari():
+    """One-shot check: can THIS server's IP read chikari's chapter API?"""
+    url = ("https://chikari.moe/api/novels/"
+           "how-to-survive-as-the-second-son-of-a-mage-family/chapters/1/read")
+    try:
+        r = http.get(url, timeout=20, headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                          "(KHTML, like Gecko) Chrome/126.0 Safari/537.36",
+            "Accept": "application/json",
+            "Referer": "https://chikari.moe/novels/how-to-survive-as-the-second-son-of-a-mage-family/1/"})
+        body_chars = len((r.json().get("body") or "")) if r.status_code == 200 else 0
+        return {"status": r.status_code, "story_chars": body_chars,
+                "verdict": "REACHABLE - jobs can run on this server" if body_chars > 500
+                           else "BLOCKED or empty - keep jobs on another machine"}
+    except Exception as e:
+        return {"status": "error", "detail": str(e), "verdict": "BLOCKED - keep jobs on another machine"}
 
 
 @app.post("/api/signup")
@@ -136,7 +156,11 @@ def start_job(req: JobReq, authorization: str | None = Header(None)):
         return {"message": "This novel is already complete! Find it in your library below."}
 
     keys = [k for k in (req.key1, req.key2) if k]
-    _dispatch_worker(job["job_id"], keys)
+    if os.environ.get("GH_TOKEN") and os.environ.get("GH_REPO"):
+        _dispatch_worker(job["job_id"], keys)          # run on GitHub Actions
+    else:
+        threading.Thread(target=run_job, args=(job["job_id"], keys),
+                         daemon=True).start()          # run right here on Render
     storage.set_job_status(job["job_id"], "running")
 
     resumed = int(job["last_completed"]) > 0
