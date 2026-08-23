@@ -192,6 +192,6 @@ def download(job_id: str, token: str = Query(...)):
         raise HTTPException(404, "File not found.")
     if not job.get("file_id"):
         raise HTTPException(404, "No file yet — the first chapter hasn't finished.")
-    data = storage.download_file(job["file_id"])
+    data = storage.read_novel(job_id).encode("utf-8")
     headers = {"Content-Disposition": 'attachment; filename="%s.txt"' % job["title"].replace('"', "")}
     return StreamingResponse(iter([data]), media_type="text/plain; charset=utf-8", headers=headers)
