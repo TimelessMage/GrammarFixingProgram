@@ -30,7 +30,7 @@ _sheet = _gc.open_by_key(os.environ["SHEET_ID"])
 _drive = build("drive", "v3", credentials=_creds)
 FOLDER_ID = os.environ["DRIVE_FOLDER_ID"]
 
-USERS_HEADERS = ["email", "password_protected", "created_at"]
+USERS_HEADERS = ["email", "password_protected", "created_at", "keys_encrypted"]
 JOBS_HEADERS = ["job_id", "email", "title", "start_url", "total_chapters",
                 "last_completed", "status", "file_id", "updated_at"]
 
@@ -38,6 +38,8 @@ JOBS_HEADERS = ["job_id", "email", "title", "start_url", "total_chapters",
 def _ws(name, headers):
     try:
         ws = _sheet.worksheet(name)
+        if ws.row_values(1) != headers:  # migrate: extend header row for new columns
+            ws.update(values=[headers], range_name="A1")
     except gspread.WorksheetNotFound:
         ws = _sheet.add_worksheet(name, rows=1000, cols=len(headers))
         ws.append_row(headers)
@@ -64,7 +66,14 @@ def get_user(email):
 
 def create_user(email, password_protected):
     with _lock:
-        _users.append_row([email, password_protected, _now()])
+        _users.append_row([email, password_protected, _now(), ""])
+
+
+def set_user_keys(email, keys_encrypted):
+    with _lock:
+        cell = _users.find(email, in_column=1)
+        if cell:
+            _users.update_cell(cell.row, USERS_HEADERS.index("keys_encrypted") + 1, keys_encrypted)
 
 
 # ---------- jobs ----------
