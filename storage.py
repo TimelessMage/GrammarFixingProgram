@@ -1,15 +1,20 @@
-"""Google Sheet as database + Google Drive as file storage.
+"""Google Sheet as the entire data store: users, jobs, AND the polished text.
 
-Sheet has two worksheets:
-  users: email | password_protected | created_at
-  jobs:  job_id | email | title | start_url | total_chapters | last_completed | status | file_id | updated_at
+(Google no longer grants service accounts any Drive storage of their own, so
+files can't be uploaded to Drive for free. Instead, each polished chapter is
+stored as rows in a 'chapters' worksheet - a cell holds up to 50k characters -
+and downloads are stitched together from those rows.)
 
-Secrets (environment variables on the Space):
+Worksheets:
+  users:    email | password_protected | created_at | keys_encrypted
+  jobs:     job_id | email | title | start_url | total_chapters
+            | last_completed | status | file_id | updated_at
+  chapters: job_id | chapter | part | text
+
+Secrets (environment variables):
   GOOGLE_CREDS_JSON  - full service-account JSON, pasted as one line
   SHEET_ID           - the long id from the Google Sheet's URL
-  DRIVE_FOLDER_ID    - the id from the shared Drive folder's URL
 """
-import io
 import json
 import os
 import threading
@@ -18,21 +23,19 @@ from datetime import datetime, timezone
 
 import gspread
 from google.oauth2.service_account import Credentials
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseUpload, MediaIoBaseDownload
 
 _lock = threading.Lock()
 
-SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 _creds = Credentials.from_service_account_info(json.loads(os.environ["GOOGLE_CREDS_JSON"]), scopes=SCOPES)
 _gc = gspread.authorize(_creds)
 _sheet = _gc.open_by_key(os.environ["SHEET_ID"])
-_drive = build("drive", "v3", credentials=_creds)
-FOLDER_ID = os.environ["DRIVE_FOLDER_ID"]
 
 USERS_HEADERS = ["email", "password_protected", "created_at", "keys_encrypted"]
 JOBS_HEADERS = ["job_id", "email", "title", "start_url", "total_chapters",
                 "last_completed", "status", "file_id", "updated_at"]
+CHAP_HEADERS = ["job_id", "chapter", "part", "text"]
+CELL_CHARS = 45000   # stay under Sheets' 50k-per-cell limit
 
 
 def _ws(name, headers):
@@ -48,6 +51,7 @@ def _ws(name, headers):
 
 _users = _ws("users", USERS_HEADERS)
 _jobs = _ws("jobs", JOBS_HEADERS)
+_chaps = _ws("chapters", CHAP_HEADERS)
 
 
 def _now():
@@ -131,9 +135,9 @@ def set_job_status(job_id, status):
         _update(job_id, {"status": status})
 
 
-def record_progress(job_id, last_completed, file_id):
+def record_progress(job_id, last_completed):
     with _lock:
-        _update(job_id, {"last_completed": last_completed, "file_id": file_id})
+        _update(job_id, {"last_completed": last_completed, "file_id": "sheet"})
 
 
 def set_title(job_id, title):
@@ -141,24 +145,27 @@ def set_title(job_id, title):
         _update(job_id, {"title": title})
 
 
-# ---------- Drive files ----------
+# ---------- chapter text (replaces Drive files) ----------
 
-def upsert_file(file_id, name, text):
-    """Create the txt on first save, overwrite it afterwards. Returns file id."""
-    media = MediaIoBaseUpload(io.BytesIO(text.encode("utf-8")), mimetype="text/plain", resumable=False)
-    if file_id:
-        _drive.files().update(fileId=file_id, media_body=media).execute()
-        return file_id
-    meta = {"name": f"{name}.txt", "parents": [FOLDER_ID]}
-    f = _drive.files().create(body=meta, media_body=media, fields="id").execute()
-    return f["id"]
+def save_chapter(job_id, chapter, text):
+    """One polished chapter -> one or more rows (split to fit the cell limit)."""
+    parts = [text[i:i + CELL_CHARS] for i in range(0, len(text), CELL_CHARS)] or [""]
+    with _lock:
+        _chaps.append_rows([[str(job_id), int(chapter), p_i, part]
+                            for p_i, part in enumerate(parts)])
 
 
-def download_file(file_id) -> bytes:
-    req = _drive.files().get_media(fileId=file_id)
-    buf = io.BytesIO()
-    dl = MediaIoBaseDownload(buf, req)
-    done = False
-    while not done:
-        _, done = dl.next_chunk()
-    return buf.getvalue()
+def read_novel(job_id):
+    """Stitch every saved chapter of a job into the final txt."""
+    with _lock:
+        rows = [r for r in _chaps.get_all_records() if str(r["job_id"]) == str(job_id)]
+    merged = {}  # (chapter, part) -> text; later rows win, so retries can't duplicate
+    for r in rows:
+        merged[(int(r["chapter"]), int(r["part"]))] = r["text"]
+    chapters = {}
+    for (chap, part), text in sorted(merged.items()):
+        chapters.setdefault(chap, []).append(text)
+    out = []
+    for chap in sorted(chapters):
+        out.append(f"\n\nCHAPTER {chap}\n\n{''.join(chapters[chap])}\n\n" + "-" * 40 + "\n\n")
+    return "".join(out)
