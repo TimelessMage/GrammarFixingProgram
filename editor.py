@@ -4,7 +4,7 @@ Changes from the local version:
   - Selenium/Chrome replaced with plain HTTP fetching (chapter URLs follow a
     number pattern, so we build each chapter's URL directly). If a site turns
     out to block this, we add a browser fallback later.
-  - Pushbullet replaced with email (mailer.py).
+  - Notifications happen on the site itself (job status + library).
   - Progress and the growing txt are saved online after EVERY chapter, so a
     server restart just resumes.
   - current_chapt bugs fixed: one clean chapter counter, resume comes from the
@@ -20,7 +20,6 @@ from bs4 import BeautifulSoup
 from openai import OpenAI
 
 import storage
-import mailer
 
 
 def _keep_awake(stop_event, log):
@@ -255,7 +254,6 @@ def ai_editor(text_block, providers, log):
 def run_job(job_id, keys):
     log = lambda msg: print(f"[{job_id}] {msg}", flush=True)
     job = storage.get_job(job_id)
-    email = job["email"]
     title = job["title"]
     providers = build_providers(keys)
 
@@ -291,17 +289,10 @@ def run_job(job_id, keys):
                 time.sleep(WAIT_WHEN_EXHAUSTED)
 
         storage.set_job_status(job_id, "done")
-        mailer.send(email, f"Finished: {title}",
-                    f"All chapters of \"{title}\" are polished!\n\n"
-                    f"Sign in to your library to download the file.")
-        log("Job complete, email sent.")
+        log("Job complete.")
 
     except Exception as e:
         storage.set_job_status(job_id, "interrupted")
-        mailer.send(email, f"Paused: {title}",
-                    f"Polishing of \"{title}\" stopped at chapter "
-                    f"{int(storage.get_job(job_id)['last_completed'])} ({e}).\n\n"
-                    f"Everything so far is saved — sign in and press Start again to resume.")
         log(f"Job interrupted: {e}")
     finally:
         stay_awake.set()  # let the server sleep again once no job is running
